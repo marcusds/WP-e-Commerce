@@ -53,25 +53,22 @@ class wpsc_coupons {
 	 * Coupons constractor
 	 *
 	 * Instantiate a coupons object with optional variable $code;
+	 * If there are more than one coupon that matches $code check them all to find the first that is valid, if not are return false. 
 	 *
 	 * @param string code (optional) the coupon code you would like to use.
 	 * @return bool True if coupon code exists, False otherwise.
 	 */
-	function wpsc_coupons($code = ''){
+	function wpsc_coupons($code = '') {
 	    global $wpdb;
 
 		if ( empty( $code ) )
 			return false;
 
 		$this->code = $code;
-
-		$coupon_data = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM `".WPSC_TABLE_COUPON_CODES."` WHERE coupon_code = %s LIMIT 1", $code ) , ARRAY_A );
-
-		if ( ( $coupon_data == '' ) || ( $coupon_data == null ) || ( strtotime( $coupon_data['expiry'] ) < time() ) ) {
-			$this->errormsg = true;
-			wpsc_delete_customer_meta( 'coupon' );
-			return false;
-		} else {
+	
+		$coupons_data = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM `".WPSC_TABLE_COUPON_CODES."` WHERE coupon_code = %s", $code ) , ARRAY_A );
+		
+		foreach($coupons_data as $key => $coupon_data) {
 			$coupon_data = array_merge( array(
 				'value' => '',
 				'is-percentage' => '',
@@ -95,10 +92,18 @@ class wpsc_coupons {
 			$this->every_product = $coupon_data['every_product'];
 			$this->errormsg = false;
 			$valid = $this->validate_coupon();
+			$items = $this->get_eligible_items();
 
-			return $valid;
+			if ( empty( $items ) )
+				continue;
+			
+			if($valid)
+				return true;
 		}
-
+		
+		$this->errormsg = true;
+		wpsc_delete_customer_meta( 'coupon' );
+		return false;
 	}
 
 	/**
@@ -315,12 +320,10 @@ class wpsc_coupons {
 
 			} else {
 
-				/* This allows for a function outside of this class to override a custom condition. */
 				if ( function_exists( $callback ) ) {
 					$result = $callback( $condition, $cart_item );
 				} else {
-					/* This allows for a plugin to create a condition callback for the condition. Perk: doesn't have to follow $callback nomenclature. */
-					$result = apply_filters( 'wpsc_coupon_conditions_default_callback', false, $callback, $condition, $cart_item );
+					$result = apply_filters( 'wpsc_coupon_default_callback', false, $callback, $cart_item );
 				}
 
 			}
