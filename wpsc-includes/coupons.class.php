@@ -69,7 +69,7 @@ class wpsc_coupons {
 
 		$this->code = $code;
 
-		$coupons_data = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM `".WPSC_TABLE_COUPON_CODES."` WHERE coupon_code = %s LIMIT 1", $code ) , ARRAY_A );
+		$coupons_data = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM `".WPSC_TABLE_COUPON_CODES."` WHERE coupon_code = %s", $code ) , ARRAY_A );
 		
 		foreach($coupons_data as $key => $coupon_data) {
 			if ( !empty( $coupon_data ) ) {
