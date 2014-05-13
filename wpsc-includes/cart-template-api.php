@@ -219,7 +219,6 @@ function wpsc_cart_show_plus_postage() {
  * Does the customers cart require/user shipping
  *
  * @uses wpsc_cart
-
  * @return boolean if true, all items in the cart do use shipping
  */
 function wpsc_uses_shipping() {
@@ -270,6 +269,16 @@ function wpsc_cart_has_shipping() {
 	}
 
 	return $has_shipping;
+}
+
+/**
+ * Checks if the store has shipping enabled globally.
+ *
+ * @since  3.8.14.1
+ * @return bool Whether or not shipping is enabled.
+ */
+function wpsc_is_shipping_enabled() {
+	return ! (bool) get_option( 'do_not_use_shipping', false );
 }
 
 /**

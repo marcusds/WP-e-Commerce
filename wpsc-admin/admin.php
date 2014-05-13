@@ -36,7 +36,7 @@ if ( ! get_option( 'wpsc_checkout_form_sets' ) ) {
 }
 
 // if we add and wpec admin javascript will add the localizations
-add_filter( '_wpsc_javascript_localizations', '_wpsc_admin_localizations', 1 );
+add_filter( 'wpsc_javascript_localizations', '_wpsc_admin_localizations', 1 );
 
 /**
  * wpsc_query_vars_product_list sets the ordering for the edit-products page list
@@ -542,9 +542,6 @@ function wpsc_admin_include_css_and_js_refac( $pagehook ) {
 
 	$current_screen = get_current_screen();
 
-	if ( version_compare( get_bloginfo( 'version' ), '3.3', '<' ) )
-		wp_admin_css( 'dashboard' );
-
 	if ( 'dashboard_page_wpsc-sales-logs' == $current_screen->id ) {
 		// jQuery
 		wp_enqueue_script( 'jquery' );
@@ -580,7 +577,7 @@ function wpsc_admin_include_css_and_js_refac( $pagehook ) {
 			);
 		}
 		wp_enqueue_style( 'wp-e-commerce-admin', WPSC_URL . '/wpsc-admin/css/admin.css', false, $version_identifier, 'all' );
-		wp_enqueue_style( 'wp-e-commerce-admin-dynamic', admin_url( "admin.php?wpsc_admin_dynamic_css=true" ), false, $version_identifier, 'all' );
+
 		// Localize scripts
 		wp_localize_script( 'wp-e-commerce-admin', 'wpsc_adminL10n', array(
 			'dragndrop_set'            => ( get_option( 'wpsc_sort_by' ) == 'dragndrop' ? 'true' : 'false' ),
@@ -596,6 +593,8 @@ function wpsc_admin_include_css_and_js_refac( $pagehook ) {
 			/* translators             : These strings are dynamically inserted as a drop-down for the Coupon comparison conditions */
 			'coupons_compare_or'       => esc_html_x( 'OR'  , 'Coupon comparison logic', 'wpsc' ),
 			'coupons_compare_and'      => esc_html_x( 'AND' , 'Coupon comparison logic', 'wpsc' ),
+			'meta_downloads_plural'    => __( ' downloads', 'live preview for downloads metabox', 'wpsc' ),
+			'meta_downloads_singular'  => __( ' download' , 'live preview for downloads metabox', 'wpsc' ),
 		) );
 	}
 	if ( $pagehook == 'wpsc-product-variations-iframe' ) {
@@ -664,6 +663,7 @@ function _wpsc_admin_localizations( $localizations ) {
 		$unique_names .= '<option value="' . $unique_name . '">' . $unique_name . '</option>';
 	}
 
+	$localizations['ajaxurl']           = admin_url( 'admin-ajax.php', 'relative' );
 	$localizations['hidden_boxes']      = '"' . esc_js( $hidden_boxes ) . '"';
 	$localizations['IS_WP27']           = '"' . esc_js( IS_WP27 ) . '"';
 	$localizations['TXT_WPSC_DELETE']   = '"' . esc_js( __( 'Delete', 'wpsc' ) ) . '"';
@@ -689,50 +689,9 @@ function _wpsc_admin_localizations( $localizations ) {
 	$localizations['TXT_WPSC_IF_WEIGHT_IS'] = '"' . esc_js( __( 'If weight is ', 'wpsc' ) ) . '"';
 
 	// we only want to add these localizations once, it should happen on the first admin script load
-	remove_filter( '_wpsc_javascript_localizations', '_wpsc_admin_localizations', 1 );
+	remove_filter( 'wpsc_javascript_localizations', '_wpsc_admin_localizations', 1 );
 
 	return $localizations;
-}
-
-/**
- * @todo finish docs
- *
- * @uses apply_filters()      Allows manipulation of the flash upload params.
- */
-function wpsc_admin_dynamic_css() {
-	header( 'Content-Type: text/css' );
-	header( 'Expires: ' . gmdate( 'r', mktime( 0, 0, 0, date( 'm' ), ( date( 'd' ) + 12 ), date( 'Y' ) ) ) . '' );
-	header( 'Cache-Control: public, must-revalidate, max-age=86400' );
-	header( 'Pragma: public' );
-	$flash = 0;
-	$flash = apply_filters( 'flash_uploader', $flash );
-
-	if ( $flash = 1 ) {
-?>
-		div.flash-image-uploader {
-			display: block;
-		}
-
-		div.browser-image-uploader {
-			display: none;
-		}
-<?php
-	} else {
-?>
-		div.flash-image-uploader {
-			display: none;
-		}
-
-		div.browser-image-uploader {
-			display: block;
-		}
-<?php
-	}
-	exit();
-}
-
-if ( isset( $_GET['wpsc_admin_dynamic_css'] ) && ( $_GET['wpsc_admin_dynamic_css'] == 'true' ) ) {
-	add_action( "admin_init", 'wpsc_admin_dynamic_css' );
 }
 
 /*
@@ -743,7 +702,7 @@ function _wpsc_enqueue_wp_e_commerce_admin( ) {
 	if ( ! $already_enqueued ) {
 		$version_identifier = WPSC_VERSION . '.' . WPSC_MINOR_VERSION;
 		wp_enqueue_script( 'wp-e-commerce-admin-js',  WPSC_URL . '/wpsc-admin/js/wp-e-commerce-admin.js', false, false, $version_identifier );
-		wp_localize_script( 'wp-e-commerce-admin-js', 'wpsc_admin_vars', _wpsc_javascript_localizations() );
+		wp_localize_script( 'wp-e-commerce-admin-js', 'wpsc_admin_vars', wpsc_javascript_localizations() );
 		$already_enqueued = true;
 	}
 }
@@ -1172,50 +1131,8 @@ add_filter( 'favorite_actions', 'wpsc_fav_action' );
 function wpsc_print_admin_scripts() {
 	$version_identifier = WPSC_VERSION . '.' . WPSC_MINOR_VERSION;
 	wp_enqueue_script( 'wp-e-commerce-admin', WPSC_CORE_JS_URL . '/wp-e-commerce.js', array( 'jquery' ), $version_identifier );
-	wp_localize_script( 'wp-e-commerce-admin', 'wpsc_ajax', _wpsc_javascript_localizations() );
+	wp_localize_script( 'wp-e-commerce-admin', 'wpsc_ajax', wpsc_javascript_localizations() );
 }
-
-/**
- * Update products page URL options when permalink scheme changes.
- *
- * @since  3.8.9
- * @access private
- *
- * @uses get_bloginfo()                               Returns information about your site to be used elsewhere
- * @uses version_compare()                            Compares two "PHP-standardized" version number strings
- * @uses _wpsc_display_permalink_refresh_notice()     Display warning on older WordPress versions
- * @uses wpsc_update_page_urls()                      Gets the premalinks for product pages and stores for quick reference
- */
-function _wpsc_action_permalink_structure_changed() {
-	$wp_version = get_bloginfo( 'version' );
-
-	// see WordPress core trac ticket:
-	// http://core.trac.wordpress.org/ticket/16736
-	// this has been fixed in WordPress 3.3
-	if ( version_compare( $wp_version, '3.3', '<' ) )
-		_wpsc_display_permalink_refresh_notice();
-		add_action( 'admin_notices', 'wpsc_check_permalink_notice' );
-
-	wpsc_update_page_urls( true );
-}
-
-/**
- * Display warning if the user is using WordPress prior to 3.3 because there is a bug with custom
- * post type and taxonomy permalink generation.
- *
- * @since 3.8.9
- * @access private
- */
-function _wpsc_display_permalink_refresh_notice(){
-	?>
-	<div id="notice" class="error fade">
-		<p>
-			<?php printf( __( 'Due to <a href="%1$s">a bug in WordPress prior to version 3.3</a>, you might run into 404 errors when viewing your products. To work around this, <a href="%2$s">upgrade to WordPress 3.3 or later</a>, or simply click "Save Changes" below a second time.' , 'wpsc' ), 'http://core.trac.wordpress.org/ticket/16736', 'http://codex.wordpress.org/Updating_WordPress' ); ?>
-		</p>
-	</div>
-	<?php
-}
-
 
 /**
  * wpsc_ajax_ie_save save changes made using inline edit
@@ -1324,12 +1241,12 @@ function _wpsc_action_admin_notices_deprecated_countries_notice() {
 			$message = __( 'Yugoslavia is no longer a valid official country name according to <a href="%1$s">ISO 3166</a> while both Serbia and Montenegro have been added to the country list.<br /> As a result, we highly recommend changing your <em>Base Country</em> to reflect this change on the <a href="%2$s">General Settings</a> page.', 'wpsc' );
 			break;
 		case 'UK':
-			$message = __( 'Prior to WP e-Commerce 3.8.9, in your database, United Kingdom\'s country code is UK and you have already selected that country code as the base country. However, now that you\'re using WP e-Commerce version %3$s, it is recommended that you change your base country to the official "GB" country code, according to <a href="%1$s">ISO 3166</a>.<br /> Please go to <a href="%2$s">General Setings</a> page to make this change.<br />The legacy "UK" item will be marked as "U.K. (legacy)" on the country drop down list. Simply switch to the official "United Kingdom (ISO 3166)" to use the "GB" country code.' , 'wpsc' );
+			$message = __( 'Prior to WP e-Commerce 3.8.9, in your database, United Kingdom\'s country code is UK and you have already selected that country code as the base country. However, now that you\'re using WP e-Commerce version %3$s, it is recommended that you change your base country to the official "GB" country code, according to <a href="%1$s">ISO 3166</a>.<br /> Please go to <a href="%2$s">General Settings</a> page to make this change.<br />The legacy "UK" item will be marked as "U.K. (legacy)" on the country drop down list. Simply switch to the official "United Kingdom (ISO 3166)" to use the "GB" country code.' , 'wpsc' );
 			break;
 		case 'AN':
 			$message = __( 'Netherlands Antilles is no longer a valid official country name according to <a href="%1$s">ISO 3166</a>.<br />Please consider changing your <em>Base Country</em> to reflect this change on the <a href="%2$s">General Settings</a> page.', 'wpsc' );
 		case 'TP':
-			$message = __( 'Prior to WP e-Commerce 3.8.9, in your database, East Timor\'s country code is TP and you have already selected that country code as the base country. However, now that you\'re using WP e-Commerce version %3$s, it is recommended that you change your base country to the official "TL" country code, according to <a href="%1$s">ISO 3166</a>.<br /> Please go to <a href="%2$s">General Setings</a> page to make this change.<br />The legacy "TP" item will be marked as "East Timor (legacy)" on the country drop down list. Simply switch to the official "Timor-Leste (ISO 3166)" to use the "TL" country code.' , 'wpsc' );
+			$message = __( 'Prior to WP e-Commerce 3.8.9, in your database, East Timor\'s country code is TP and you have already selected that country code as the base country. However, now that you\'re using WP e-Commerce version %3$s, it is recommended that you change your base country to the official "TL" country code, according to <a href="%1$s">ISO 3166</a>.<br /> Please go to <a href="%2$s">General Settings</a> page to make this change.<br />The legacy "TP" item will be marked as "East Timor (legacy)" on the country drop down list. Simply switch to the official "Timor-Leste (ISO 3166)" to use the "TL" country code.' , 'wpsc' );
 			break;
 	}
 
@@ -1342,12 +1259,11 @@ function _wpsc_action_admin_notices_deprecated_countries_notice() {
 	echo '<div id="wpsc-warning" class="error"><p>' . $message . '</p></div>';
 }
 
-add_action( 'admin_notices', '_wpsc_action_admin_notices_deprecated_countries_notice' );
-add_action( 'permalink_structure_changed' , '_wpsc_action_permalink_structure_changed' );
-add_action( 'wp_ajax_category_sort_order', 'wpsc_ajax_set_category_order' );
+add_action( 'admin_notices'               , '_wpsc_action_admin_notices_deprecated_countries_notice' );
+add_action( 'wp_ajax_category_sort_order' , 'wpsc_ajax_set_category_order' );
 add_action( 'wp_ajax_variation_sort_order', 'wpsc_ajax_set_variation_order' );
-add_action( 'wp_ajax_wpsc_ie_save', 'wpsc_ajax_ie_save' );
-add_action('in_admin_header', 'wpsc_add_meta_boxes');
+add_action( 'wp_ajax_wpsc_ie_save'        , 'wpsc_ajax_ie_save' );
+add_action( 'in_admin_header'             , 'wpsc_add_meta_boxes' );
 
 /**
  * Deletes file associated with a product.
@@ -1540,6 +1456,52 @@ if ( isset( $_REQUEST['dismiss_389_upgrade_notice'] ) || version_compare( WPSC_V
 
 if ( ! get_option( 'wpsc_hide_3.8.9_notices' ) )
 	add_action( 'admin_notices', '_wpsc_admin_notices_3dot8dot9' );
+
+/**
+ * Checks to ensure that shipping is enabled, and one or both of the shipping/billing states are not displayed.
+ * If those condtions are met, and the user has not previously dismissed the notice, then we notify them
+ * that the shipping calculator now depend on those fields.
+ *
+ * @access private
+ *
+ * @uses add_query_arg()      Adds argument to the WordPress query
+ * @uses update_option()      Updates an option in the WordPress database given string and value
+ * @uses get_option()         Gets option from the database given string
+ */
+function _wpsc_admin_notices_3_8_14_1() {
+
+	if ( get_option( 'do_not_use_shipping' ) ) {
+		return;
+	}
+
+	global $wpdb;
+
+	$state_visibility = $wpdb->get_var( "SELECT COUNT(active) FROM " . WPSC_TABLE_CHECKOUT_FORMS . " WHERE unique_name IN ( 'billingstate', 'shippingstate' ) AND active = '1'" );
+
+	if ( '2' === $state_visibility ) {
+		return;
+	}
+
+	$message = '<p>' . __( 'WP eCommerce has been updated, please confirm the checkout field display
+settings are correct for your store.<br><br><i>The visibility of the checkout billing and shipping
+drop downs that show states and provinces is now controlled by the "billingstate" and "shippingstate"
+options set in the <b>Store Settings</b> on the <b>Checkout</b> tab.  Prior versions used
+the "billingcountry" and "shippingcountry" settings to control the visibility of the drop downs.</i>' , 'wpsc' ) . '</p>';
+	$message .= "\n<p>" . __( '<a href="%s">Hide this warning</a>', 'wpsc' ) . '</p>';
+	$message = sprintf(
+		$message,
+		add_query_arg( 'dismiss_3_8_14_1_upgrade_notice', 1 )
+	);
+
+	echo '<div id="wpsc-3-8-14-1-notice" class="error">' . $message . '</div>';
+}
+
+if ( isset( $_REQUEST['dismiss_3_8_14_1_upgrade_notice'] ) || version_compare( WPSC_VERSION, '3.9', '>=' ) ) {
+	update_option( 'wpsc_hide_3_8_14_1_notices', true );
+}
+
+if ( ! get_option( 'wpsc_hide_3_8_14_1_notices' ) )
+	add_action( 'admin_notices', '_wpsc_admin_notices_3_8_14_1' );
 
 /**
  * @todo docs

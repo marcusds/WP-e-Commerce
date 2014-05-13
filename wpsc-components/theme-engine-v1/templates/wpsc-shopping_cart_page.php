@@ -130,6 +130,7 @@ endif;
    <?php do_action('wpsc_before_shipping_of_shopping_cart'); ?>
 
    <div id="wpsc_shopping_cart_container">
+
    <?php if(wpsc_uses_shipping()) : ?>
       <h2><?php _e('Calculate Shipping Price', 'wpsc'); ?></h2>
       <table class="productcart">
@@ -149,7 +150,7 @@ endif;
             <?php else: ?>
                <tr class='wpsc_update_location_error'>
                   <td colspan='5' class='shipping_error' >
-                     <?php _e('Sorry, online ordering is unavailable to this destination and/or weight. Please double check your destination details.', 'wpsc'); ?>
+                     <?php _e('Sorry, shipping quotes could not be calculated with the details provided. Please double check your shipping address details.', 'wpsc'); ?>
                   </td>
                </tr>
             <?php endif; ?>
@@ -190,14 +191,6 @@ endif;
          <?php endif; ?>
 
          <?php wpsc_update_shipping_multiple_methods(); ?>
-
-
-         <?php if (!wpsc_have_shipping_quote()) : // No valid shipping quotes ?>
-               </table>
-               </div>
-			</div>
-            <?php return; ?>
-         <?php endif; ?>
       </table>
    <?php endif;  ?>
 
@@ -350,46 +343,13 @@ endif;
                   	if( $shipping_same_as_billing )
                   		$checked = 'checked="checked"';
                    ?>
-					<label for='shippingSameBilling'><?php _e('Same as billing address:','wpsc'); ?></label>
-					<input type='checkbox' value='true'  data-wpsc-meta-key="shippingSameBilling" class= "wpsc-visitor-meta"  name='shippingSameBilling' id='shippingSameBilling' <?php echo $checked; ?> />
+					<label for='shippingSameBilling'><input type='checkbox' value='true'  data-wpsc-meta-key="shippingSameBilling" class= "wpsc-visitor-meta"  name='shippingSameBilling' id='shippingSameBilling' <?php echo $checked; ?> /><?php _e('Same as billing address:','wpsc'); ?></label>
 					<br/><span id="shippingsameasbillingmessage"><?php _e('Your order will be shipped to the billing address', 'wpsc'); ?></span>
                   </td>
                </tr>
                <?php endif;
 
             // Not a header so start display form fields
-            }elseif(wpsc_disregard_shipping_state_fields()){
-            ?>
-               <tr class='wpsc_hidden'>
-                  <td class='<?php echo wpsc_checkout_form_element_id(); ?>'>
-                     <label for='<?php echo wpsc_checkout_form_element_id(); ?>'>
-                     <?php echo wpsc_checkout_form_name();?>
-                     </label>
-                  </td>
-                  <td>
-                     <?php echo wpsc_checkout_form_field();?>
-                      <?php if(wpsc_the_checkout_item_error() != ''): ?>
-                             <p class='validation-error'><?php echo wpsc_the_checkout_item_error(); ?></p>
-                     <?php endif; ?>
-                  </td>
-               </tr>
-            <?php
-            }elseif(wpsc_disregard_billing_state_fields()){
-            ?>
-               <tr class='wpsc_hidden'>
-                  <td class='<?php echo wpsc_checkout_form_element_id(); ?>'>
-                     <label for='<?php echo wpsc_checkout_form_element_id(); ?>'>
-                     <?php echo wpsc_checkout_form_name();?>
-                     </label>
-                  </td>
-                  <td>
-                     <?php echo wpsc_checkout_form_field();?>
-                      <?php if(wpsc_the_checkout_item_error() != ''): ?>
-                             <p class='validation-error'><?php echo wpsc_the_checkout_item_error(); ?></p>
-                     <?php endif; ?>
-                  </td>
-               </tr>
-            <?php
             }elseif( $wpsc_checkout->checkout_item->unique_name == 'billingemail'){ ?>
                <?php $email_markup =
                "<div class='wpsc_email_address'>

@@ -52,9 +52,17 @@ function wpsc_core_constants() {
 	}
 
 	// Define Plugin version
-	define( 'WPSC_VERSION'            , '3.8.14-dev' );
-	define( 'WPSC_MINOR_VERSION'      , 'e8a508c011' );
-	define( 'WPSC_PRESENTABLE_VERSION', '3.8.14-dev' );
+	if ( ! defined( 'WPSC_VERSION' ) ) {
+		define( 'WPSC_VERSION'            , '3.9-dev' );
+	}
+
+	if ( ! defined( 'WPSC_MINOR_VERSION' ) ) {
+		define( 'WPSC_MINOR_VERSION'      , '6720b163bc' );
+	}
+
+	if ( ! defined( 'WPSC_PRESENTABLE_VERSION' ) ) {
+		define( 'WPSC_PRESENTABLE_VERSION', '3.9-dev' );
+	}
 
 	// Define a salt to use when we hash, WPSC_SALT may be defined for us in our config file, so check first
 	if ( ! defined( 'WPSC_SALT' ) ) {
@@ -65,12 +73,12 @@ function wpsc_core_constants() {
 		}
 	}
 
-	// Define the current databse version
-	define( 'WPSC_DB_VERSION'         , 10 );
+	// Define the current database version
+	define( 'WPSC_DB_VERSION', 13 );
 
 	// Define Debug Variables for developers, if they haven't already been defined
 	if ( ! defined( 'WPSC_DEBUG' ) ) {
-		define( 'WPSC_DEBUG'        , false );
+		define( 'WPSC_DEBUG', false );
 	}
 
 	if ( ! defined( 'WPSC_GATEWAY_DEBUG' ) ) {
@@ -91,7 +99,14 @@ function wpsc_core_constants() {
 		define( 'WPEC_LOAD_DEPRECATED', true );
 	}
 
+	// Do not require loading of deprecated js
+	// of this in future versions.
+	if ( ! defined( 'WPEC_LOAD_DEPRECATED_JS' ) ) {
+		define( 'WPEC_LOAD_DEPRECATED_JS', false );
+	}
+
 	define( 'WPSC_CUSTOMER_COOKIE', 'wpsc_customer_cookie_' . COOKIEHASH );
+
 	if ( ! defined( 'WPSC_CUSTOMER_COOKIE_PATH' ) )
 		define( 'WPSC_CUSTOMER_COOKIE_PATH', COOKIEPATH );
 
@@ -162,7 +177,7 @@ function wpsc_core_is_multisite() {
 
 	define( 'IS_WPMU', $is_multisite );
 
-	return (bool)$is_multisite;
+	return (bool) $is_multisite;
 }
 
 /**
@@ -345,7 +360,8 @@ function _wpsc_action_init_shipping_method() {
 	}
 }
 
-// add_action( 'wpsc_setup_customer', '_wpsc_action_init_shipping_method' );
+// make sure that when we display the shopping cart page shipping quotes have been calculated
+add_action( 'wpsc_before_shipping_of_shopping_cart', '_wpsc_action_init_shipping_method' );
 
 /***
  * wpsc_core_setup_globals()

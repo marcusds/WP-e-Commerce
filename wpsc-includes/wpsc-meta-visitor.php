@@ -601,7 +601,7 @@ function wpsc_get_visitor_cart( $visitor_id ) {
 		}
 	}
 
-	$wpsc_cart = apply_filters( 'wpsc_got_visitor_cart', $wpsc_cart, $visitor_id );
+	$wpsc_cart = apply_filters( 'wpsc_get_visitor_cart', $wpsc_cart, $visitor_id );
 
 	return $wpsc_cart;
 }
@@ -880,12 +880,12 @@ function wpsc_get_visitor_meta( $visitor_id, $meta_key = '', $single = false ) {
 	$meta_value = get_metadata( 'wpsc_visitor' , $visitor_id , $meta_key, $single );
 
 	// notification when any meta item is retrieved
-	if ( has_filter( $filter = 'wpsc_got_visitor_meta' ) ) {
+	if ( has_filter( $filter = 'wpsc_get_visitor_meta' ) ) {
 		$meta_value = apply_filters( $filter,  $meta_value, $meta_key, $visitor_id );
 	}
 
 	// notification when a specific meta item is retrieved
-	if ( has_filter( $filter = 'wpsc_got_visitor_meta_' . $meta_key  ) ) {
+	if ( has_filter( $filter = 'wpsc_get_visitor_meta_' . $meta_key  ) ) {
 		$meta_value = apply_filters( $filter,  $meta_value, $meta_key, $visitor_id );
 	}
 
@@ -1242,7 +1242,6 @@ add_action( 'wpsc_updated_visitor_meta_billingcountry', '_wpsc_updated_visitor_m
  * @return none
  */
 function wpsc_delete_visitor_ajax() {
-
 	$visitor_id_to_delete = $_POST['wpsc_visitor_id'];
 	$security_nonce 	  = $_POST['wpsc_security'];
 
@@ -1252,12 +1251,12 @@ function wpsc_delete_visitor_ajax() {
 		// This nonce is not valid.
 		die( 'Security check' );
 	} else {
-		wpsc_delete_visitor( $visitor_id );
+		wpsc_delete_visitor( $visitor_id_to_delete );
 	}
 
 	exit( 0 );
 }
 
 
-add_action( 'wp_ajax_wpsc_delete_visitor'       		, 'wpsc_delete_visitor_ajax' );
-add_action( 'wp_ajax_nopriv_wpsc_validate_customer'		, 'wpsc_delete_visitor_ajax' );
+add_action( 'wp_ajax_wpsc_delete_visitor', 'wpsc_delete_visitor_ajax' );
+add_action( 'wp_ajax_nopriv_wpsc_delete_visitor', 'wpsc_delete_visitor_ajax' );

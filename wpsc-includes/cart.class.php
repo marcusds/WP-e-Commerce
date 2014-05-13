@@ -11,7 +11,6 @@
  * @subpackage wpsc-cart-classes
 */
 
-
 /*
  * @since 3.8.14
  *
@@ -120,22 +119,6 @@ class wpsc_cart {
 		$delivery_region  = wpsc_get_customer_meta( 'shippingregion'  );
 		$billing_region   = wpsc_get_customer_meta( 'billingregion'   );
 
-		if ( ! $billing_country && ! $delivery_country ) {
-			$billing_country = $delivery_country = get_option( 'base_country' );
-			wpsc_update_customer_meta( 'billingcountry' , $billing_country  );
-		} elseif ( ! $billing_country ) {
-			$billing_country = $delivery_country;
-			wpsc_update_customer_meta( 'billingcountry' , $billing_country  );
-		} elseif ( ! $delivery_country ) {
-			$delivery_country = $billing_country;
-			wpsc_update_customer_meta( 'shippingcountry', $delivery_country );
-		}
-
-		if ( ! $billing_region && ! $delivery_region ) {
-			$billing_region = $delivery_region = get_option( 'base_region' );
-			wpsc_update_customer_meta( 'billingregion'  , $billing_region   );
-		}
-
 		$this->delivery_country = $delivery_country;
 		$this->selected_country = $billing_country ;
 		$this->delivery_region  = $delivery_region ;
@@ -225,6 +208,70 @@ class wpsc_cart {
 	}
 
 	/**
+	 * Does the cart have a valid shipping method selected
+	 *
+	 * @since 3.8.14.1
+	 *
+	 * @return boolean true if a valid shipping method is selected, false otherwise
+	 */
+	function shipping_method_selected() {
+
+		$selected = true;
+
+		// so the check could be written as one long expression, but thougth it better to make it more
+		// readily understandable by someone who wants to see what is happening.
+		// TODO:  All this logic would be unnecessary but for the lack of protected properties and
+		// the legacy code that may choose to manipulate them directly avoiding class methods
+
+		// is there a shipping method?
+		if ( empty( $this->selected_shipping_method ) ) {
+			$selected = false;
+		}
+
+		// first we will check the shipping methods
+		if ( $selected && ( ! is_array( $this->shipping_methods ) || empty( $this->shipping_methods ) ) ) {
+			$selected = false;
+		}
+
+		// check to be sure the shipping method name is not empty, and is also in the array
+		if ( $selected && ( empty( $this->selected_shipping_method ) || ! in_array( $this->selected_shipping_method, $this->shipping_methods ) ) ) {
+			$selected = false;
+		}
+
+		return $selected;
+	}
+
+	/**
+	 * Does the cart have a valid shipping quote selected
+	 *
+	 * @since 3.8.14.1
+	 *
+	 * @return boolean true if a valid shipping method is selected, false otherwise
+	 */
+	function shipping_quote_selected() {
+
+		$selected = true;
+
+		// so the check could be written as one long expression, but thought it better to make it more
+		// readily understandable by someone who wants to see what is happening.
+		// TODO:  All this logic would be unnecessary but for the lack of protected properties and
+		// the legacy code that may choose to manipulate them directly avoiding class methods
+
+		// do we have a shipping quotes array
+		if ( $selected && ( ! is_array( $this->shipping_quotes ) || empty( $this->shipping_quotes ) ) ) {
+			$selected = false;
+		}
+
+		if ( $selected && ! isset( $this->shipping_quotes[$this->selected_shipping_option] )  ) {
+			$selected = false;
+		}
+
+
+		return $selected;
+	}
+
+
+	/**
 	 * Is all shipping method information for this cart empty
 	 *
 	 * @since 3.8.14
@@ -233,7 +280,6 @@ class wpsc_cart {
 	function shipping_info_empty() {
 		return empty( $this->selected_shipping_method )
 					&& empty( $this->selected_shipping_option )
-						&& empty( $this->shipping_option )
 							&& empty( $this->shipping_method )
 								&& empty( $this->shipping_methods )
 									&& empty( $this->shipping_quotes )
@@ -251,15 +297,50 @@ class wpsc_cart {
 	 * @return boolean true if a recalc is necessary
 	 */
 	function needs_shipping_recalc() {
+		global $wpsc_shipping_modules;
+
+		if ( ! wpsc_is_shipping_enabled() ) {
+			return false;
+		}
+
 		if ( $this->shipping_info_empty() && $this->uses_shipping() ) {
 			return true;
 		}
+
+		$needs_shipping_recalc = false;
+
+		$what_changed = _wpsc_visitor_location_what_changed();
 
 		// TODO: this is where we will check the available shipping methods and see if
 		// the parameters used to create the quotes have changes since the quotes where
 		// created.  A function of the future shipping component
 
-		return false;
+		if ( array_key_exists( 'shippingpostcode', $what_changed ) ) {
+			$custom_shipping = get_option( 'custom_shipping_options' );
+			foreach ( (array)$custom_shipping as $shipping ) {
+				if ( isset( $wpsc_shipping_modules[$shipping]->needs_zipcode ) && $wpsc_shipping_modules[$shipping]->needs_zipcode == true ) {
+					$needs_shipping_recalc = true;
+					break;
+				}
+			}
+		}
+
+		// recalculate shipping if country changes
+		if ( array_key_exists( 'shippingcountry', $what_changed ) ) {
+			$needs_shipping_recalc = true;
+		}
+
+		// recalculate shipping if region changes
+		if ( array_key_exists( 'shippingregion', $what_changed ) ) {
+			$needs_shipping_recalc = true;
+		}
+
+		// recalculate shipping if state
+		if ( array_key_exists( 'shippingstate', $what_changed ) ) {
+			$needs_shipping_recalc = true;
+		}
+
+		return $needs_shipping_recalc;
 	}
 
 	/**
@@ -267,16 +348,7 @@ class wpsc_cart {
      * @access public
      */
 	function get_shipping_method() {
-		global $wpdb, $wpsc_shipping_modules;
-		// Reset all the shipping data in case the destination has changed
-		$this->selected_shipping_method = null;
-		$this->selected_shipping_option = null;
-		$this->shipping_option = null;
-		$this->shipping_method = null;
-		$this->shipping_methods = array();
-		$this->shipping_quotes = array();
-		$this->shipping_quote = null;
-		$this->shipping_method_count = 0;
+		global $wpsc_shipping_modules;
 
 		// set us up with a shipping method.
 		$custom_shipping = get_option( 'custom_shipping_options' );
@@ -289,59 +361,56 @@ class wpsc_cart {
 		$this->shipping_methods      = get_option( 'custom_shipping_options' );
 		$this->shipping_method_count = count( $this->shipping_methods );
 
-		do_action( 'wpsc_before_get_shipping_method', $this );
+		$do_not_use_shipping = get_option( 'do_not_use_shipping', false );
+		$ready_to_calculate_shipping = apply_filters( 'wpsc_ready_to_calculate_shipping', true, $this );
 
-		if ( ( get_option( 'do_not_use_shipping' ) != 1 ) && ( $this->shipping_method_count > 0 ) && apply_filters( 'wpsc_ready_to_calculate_shipping', true, $this ) ) {
+		if ( ! $do_not_use_shipping ) {
 
-			$shipping_quotes = null;
+			if ( $this->shipping_method_count > 0 && $ready_to_calculate_shipping ) {
+				do_action( 'wpsc_before_get_shipping_method', $this );
 
-			if ( $this->selected_shipping_method != null ) {
-
-				// use the selected shipping module
-				if ( is_callable( array( &$wpsc_shipping_modules[ $this->selected_shipping_method ], 'getQuote'  ) ) ) {
-					$this->shipping_quotes = $wpsc_shipping_modules[ $this->selected_shipping_method ]->getQuote();
-				}
-
-			} else {
-
-				// select the shipping quote with lowest value
-				$min_value  = false;
-				$min_quote  = '';
-				$min_method = '';
+				$shipping_quotes = null;
 
 				foreach ( (array) $custom_shipping as $shipping_module ) {
-					if ( empty( $wpsc_shipping_modules[$shipping_module] ) || ! is_callable( array( $wpsc_shipping_modules[$shipping_module], 'getQuote' ) ) ) {
+
+					if ( empty( $wpsc_shipping_modules[ $shipping_module ] ) || ! is_callable( array( $wpsc_shipping_modules[ $shipping_module ], 'getQuote' ) ) ) {
 						continue;
 					}
 
-					$raw_quotes = $wpsc_shipping_modules[$shipping_module]->getQuote();
+					$raw_quotes = $wpsc_shipping_modules[ $shipping_module ]->getQuote();
+
 					if ( empty( $raw_quotes ) || ! is_array( $raw_quotes ) ) {
 						continue;
 					}
 
-					foreach ( $raw_quotes as $name => $value ) {
-						if ( $min_value === false || $value < $min_value ) {
-							$min_value  = $value;
-							$min_quote  = $name;
-							$min_method = $shipping_module;
+					if ( is_array( $raw_quotes ) ) {
+						foreach ( $raw_quotes as $key => $value ) {
+							$this->shipping_quotes[$wpsc_shipping_modules[ $shipping_module ]->name. ' ' . $key] = $value;
 						}
+						$this->shipping_quote_count = count( $this->shipping_quotes );
 					}
 				}
 
-				if ( $min_value !== false ) {
-					$this->selected_shipping_method = $min_method;
-					$this->shipping_quotes          = $wpsc_shipping_modules[$this->selected_shipping_method]->getQuote();
-					$this->selected_shipping_option = $min_quote;
+				if ( 1 == count( $this->shipping_methods ) ) {
+					$this->selected_shipping_method = $this->shipping_methods[0];
+
+					if ( 1 == count( $this->shipping_quotes ) ) {
+						reset( $this->shipping_quotes );
+						$this->selected_shipping_option = key( $this->shipping_quotes );
+					}
 				}
+
+				do_action( 'wpsc_after_get_shipping_method', $this );
 			}
 		}
-
-		do_action( 'wpsc_after_get_shipping_method', $this );
 	}
 
 	/**
 	 * get_shipping_option method, gets the shipping option from the selected method and associated quotes
+	 *
 	 * @access public
+	 *
+	 * @return none
 	 */
 	function get_shipping_option() {
 		global $wpdb, $wpsc_shipping_modules;
@@ -358,12 +427,14 @@ class wpsc_cart {
 			$this->selected_shipping_option = '';
 		}
 
-		if ( ( $this->shipping_quotes != null ) && ( array_search( $this->selected_shipping_option, array_keys( $this->shipping_quotes ) ) === false ) ) {
-			
-			$slice    = array_keys( array_slice( $this->shipping_quotes, 0, 1 ) );
-			$selected = array_pop( $slice );
-			
-			$this->selected_shipping_option = apply_filters( 'wpsc_default_shipping_quote', $selected, $this->shipping_quotes );
+		// if the current shipping option is not valid, go back to no shipping option
+		if ( ! empty( $this->selected_shipping_option ) && ! isset( $this->shipping_quotes[$this->selected_shipping_option] ) ) {
+			$this->selected_shipping_option = null;
+		}
+
+		// let the world pick a default shipping quote
+		if (  empty( $this->selected_shipping_option ) && is_array( $this->shipping_quotes ) && ! empty( $this->shipping_quotes ) ) {
+			$this->selected_shipping_option = apply_filters( 'wpsc_default_shipping_quote', $this->selected_shipping_option, $this->shipping_quotes );
 		}
 	}
 
@@ -374,6 +445,7 @@ class wpsc_cart {
 	 */
 	function update_shipping( $method, $option ) {
 		global $wpdb, $wpsc_shipping_modules;
+
 		$this->selected_shipping_method = $method;
 
 		$this->shipping_quotes = $wpsc_shipping_modules[$method]->getQuote();
@@ -384,7 +456,6 @@ class wpsc_cart {
 			$this->cart_items[$key]->calculate_shipping();
 		}
 
-		$this->clear_cache();
 		$this->get_shipping_option();
 
 		// reapply coupon in case it's free shipping
@@ -478,10 +549,15 @@ class wpsc_cart {
 	function set_item( $product_id, $parameters, $updater = false ) {
 
 		// default action is adding
-		$add_item = false;
-		$edit_item = false;
+		$add_item        = false;
+		$edit_item       = false;
+		$variation_check = true;
 
-		if ( $parameters ['quantity'] > 0 && $this->check_remaining_quantity( $product_id, $parameters ['variation_values'], $parameters ['quantity'] ) ) {
+		if ( wpsc_product_has_variations( $product_id ) && is_null( $parameters['variation_values'] ) ) {
+			$variation_check = false;
+		}
+
+		if ( $variation_check && $parameters['quantity'] > 0 && $this->check_remaining_quantity( $product_id, $parameters['variation_values'], $parameters['quantity'] ) ) {
 
 			$new_cart_item = new wpsc_cart_item( $product_id, $parameters, $this );
 
@@ -500,12 +576,12 @@ class wpsc_cart {
 
 						// if they are the same, increment the count, and break out;
 						if ( ! $updater ) {
-							$this->cart_items [$key]->quantity += $new_cart_item->quantity;
+							$this->cart_items[$key]->quantity += $new_cart_item->quantity;
 						} else {
-							$this->cart_items [$key]->quantity = $new_cart_item->quantity;
+							$this->cart_items[$key]->quantity = $new_cart_item->quantity;
 						}
 
-						$this->cart_items [$key]->refresh_item();
+						$this->cart_items[$key]->refresh_item();
 
 						$add_item = false;
 						$edit_item = true;
@@ -517,7 +593,7 @@ class wpsc_cart {
 
 			// if we are still adding the item, add it
 			if ( $add_item ) {
-				$this->cart_items [] = $new_cart_item;
+				$this->cart_items[] = $new_cart_item;
 				do_action( 'wpsc_add_item', $product_id, $parameters, $this );
 			}
 		}
@@ -544,14 +620,14 @@ class wpsc_cart {
 	 * @return boolean true on sucess, false on failure
 	 */
 	function edit_item( $key, $parameters ) {
-		if ( isset( $this->cart_items [$key] ) ) {
-			$product_id = $this->cart_items [$key]->product_id;
-			$quantity = $parameters ['quantity'] - $this->cart_items [$key]->quantity;
-			if ( $this->check_remaining_quantity( $product_id, $this->cart_items [$key]->variation_values, $quantity ) == true ) {
+		if ( isset( $this->cart_items[$key] ) ) {
+			$product_id = $this->cart_items[$key]->product_id;
+			$quantity = $parameters ['quantity'] - $this->cart_items[$key]->quantity;
+			if ( $this->check_remaining_quantity( $product_id, $this->cart_items[$key]->variation_values, $quantity ) == true ) {
 				foreach ( $parameters as $name => $value ) {
-					$this->cart_items [$key]->$name = $value;
+					$this->cart_items[$key]->$name = $value;
 				}
-				$this->cart_items [$key]->refresh_item();
+				$this->cart_items[$key]->refresh_item();
 				do_action( 'wpsc_edit_item', $product_id, $parameters, $this, $key );
 				$this->clear_cache();
 			}
@@ -612,10 +688,10 @@ class wpsc_cart {
 	 * @return boolean true on sucess, false on failure
 	 */
 	function remove_item( $key ) {
-		if ( isset( $this->cart_items [$key] ) ) {
-			$cart_item = & $this->cart_items [$key];
+		if ( isset( $this->cart_items[$key] ) ) {
+			$cart_item = & $this->cart_items[$key];
 			$cart_item->update_item( 0 );
-			unset( $this->cart_items [$key] );
+			unset( $this->cart_items[$key] );
 			$this->cart_items = array_values( $this->cart_items );
 			$this->cart_item_count = count( $this->cart_items );
 			$this->current_cart_item = - 1;
@@ -698,7 +774,7 @@ class wpsc_cart {
 	}
 
 	/**
-	 * calculate total price method
+	 * Calculate total price method
 	 *
 	 * @access public
 	 *
@@ -719,7 +795,7 @@ class wpsc_cart {
 		$coupons_amount = round( $this->coupons_amount, 2 );
 
 		// Calculate the total
-		$total = ( ( $subtotal + $shipping + $tax ) > $coupons_amount ) ? ( $subtotal + $shipping + $tax - $coupons_amount ) : 0.00;
+		$total = ( $subtotal > $coupons_amount ) ? ( ( $subtotal - $coupons_amount ) + $shipping + $tax ) : ( $tax + $shipping );
 
 		// Filter total
 		$total = apply_filters( 'wpsc_calculate_total_price', $total, $subtotal, $shipping, $tax, $coupons_amount );
@@ -1036,7 +1112,7 @@ class wpsc_cart {
 	 */
 	function next_cart_item() {
 		$this->current_cart_item ++;
-		$this->cart_item = $this->cart_items [$this->current_cart_item];
+		$this->cart_item = $this->cart_items[$this->current_cart_item];
 		return $this->cart_item;
 	}
 
@@ -1063,7 +1139,7 @@ class wpsc_cart {
 	function rewind_cart_items() {
 		$this->current_cart_item = - 1;
 		if ( $this->cart_item_count > 0 ) {
-			$this->cart_item = $this->cart_items [0];
+			$this->cart_item = $this->cart_items[0];
 		}
 	}
 

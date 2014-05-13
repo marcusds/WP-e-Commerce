@@ -1,4 +1,12 @@
 <?php
+
+// this is the priority that all hooks that enforce business rules about visitor meta will run.
+// Intentially set to a high priority so that add-ons that use the hooks see the visitor meta values
+// after the rules have been enforced
+if ( ! defined( '_WPSC_USER_META_HOOK_PRIORITY' ) ) {
+	define( '_WPSC_USER_META_HOOK_PRIORITY' , 2 );
+}
+
 /**
  * Get all meta ids that have the meta value
  *
@@ -15,7 +23,7 @@ function wpsc_get_meta_ids_by_meta_key( $meta_object_type, $meta_key = '' ) {
 	$id_field_name = _wpsc_meta_key_name( 'visitor' );
 
 	$sql = 'SELECT meta_id FROM `' . $meta_table . '` where meta_key = "%s"';
-	$sql = $wpdb->prepare( $sql , $meta_key );
+	$sql = $wpdb->prepare( $sql, $meta_key );
 
 	$meta_item_ids = $wpdb->get_col( $sql, 0  );
 	$meta_item_ids = array_map( 'intval', $meta_item_ids );
@@ -33,7 +41,7 @@ function wpsc_get_meta_ids_by_meta_key( $meta_object_type, $meta_key = '' ) {
  *
  * @param string $meta_object_type the WordPress meta object type
  * @param int|string $timestamp timestamp to compare meta items against, if int a unix timestamp is assumed,
- *								if string a mysql timestamp is assumed
+ *								if string a MYSQL timestamp is assumed
  * @param string $comparison any one of the supported comparison operators,(=,>=,>,<=,<,<>,!=)
  * @param string $meta_key restrict testing of meta to the values with the specified meta key
  * @return array metadata matching the query
@@ -411,7 +419,7 @@ function _wpsc_replace_visitor_meta_keys( $replacements ) {
 	}
 
 	if ( $total_count_updated > 0 ) {
-		wp_cache_flush();
+		wpsc_core_flush_temporary_data();
 	}
 
 	return $total_count_updated;
@@ -515,7 +523,7 @@ function _wpsc_meta_migrate_anonymous_user_cron() {
 		$response = wp_remote_post( admin_url( 'admin-ajax.php' ) . '?action=wpsc_migrate_anonymous_user' , array(  'blocking' => true, ) );
 		wp_schedule_single_event( time() + 30 , 'wpsc_migrate_anonymous_user_cron' );
 	} else {
-		wp_cache_flush();
+		wpsc_core_flush_temporary_data();
 	}
 }
 
@@ -544,38 +552,11 @@ function _wpsc_visitor_meta_key_replacements( $meta_keys ) {
 	$meta_keys['billingzip']               = 'billingpostcode';
 	$meta_keys['shipping_same_as_billing'] = 'shippingSameBilling';
 	$meta_keys['delivertoafriend']         = 'shippingSameBilling';
+	$meta_keys['shipping_state']           = 'shippingstate';
 	return $meta_keys;
 }
 
 add_filter( 'wpsc_visitor_meta_key_replacements', '_wpsc_visitor_meta_key_replacements' );
-
-
-/**
- * custmer/visitor/user meta has been known by different identifiers. we are trying to standardize on using
- * the uniquename value in the form definition for well known shopper meta.  this function allows
- * old meta keys to return the proper meta value from the database
- *
- * @since 3.8.14
- * @access private
- * @param unknown $meta_keys
- * @return string
- */
-function _wpsc_visitor_location_changed( $meta_keys ) {
-
-	$meta_keys['billing_region']           = 'billingregion';
-	$meta_keys['billing_country']          = 'billingcountry';
-	$meta_keys['shipping_region']          = 'shippingregion';
-	$meta_keys['shipping_country']         = 'shippingcountry';
-	$meta_keys['shipping_zip']             = 'shippingpostcode';
-	$meta_keys['shipping_zipcode']         = 'shippingpostcode';
-	$meta_keys['billing_zip']              = 'billingpostcode';
-	$meta_keys['billing_zipcode']          = 'billingpostcode';
-	$meta_keys['shippingzip']              = 'shippingpostcode';
-	$meta_keys['billingzip']               = 'billingpostcode';
-	$meta_keys['shipping_same_as_billing'] = 'shippingSameBilling';
-	$meta_keys['delivertoafriend']         = 'shippingSameBilling';
-	return $meta_keys;
-}
 
 
 /*
@@ -611,8 +592,8 @@ function _wpsc_visitor_location_is_changing( $meta_value, $meta_key, $visitor_id
 		$what_about_the_visitor_location_changed = array();
 	}
 
-	if ( ! in_array( $meta_key, $what_about_the_visitor_location_changed ) ) {
-		$what_about_the_visitor_location_changed[] = $meta_key;
+	if ( ! array_key_exists( $meta_key, $what_about_the_visitor_location_changed ) ) {
+		$what_about_the_visitor_location_changed[$meta_key] = $meta_value;
 		wpsc_update_visitor_meta( $visitor_id, 'location_attributes_changed', $what_about_the_visitor_location_changed );
 		$location_change_updated = true;
 	}
@@ -620,9 +601,60 @@ function _wpsc_visitor_location_is_changing( $meta_value, $meta_key, $visitor_id
 	return $location_change_updated;
 }
 
+/*
+ * find out what has changed with visitor location
+*
+* @since 3.8.14
+* @access private
+*
+* @param int   $visitor_id the visitor/customer unique id
+*
+* @return array          key value pairs, the key is the unique name of the location element
+*                        that changed, the value is the new value assigned to the location attribute
+*
+*/
+function _wpsc_visitor_location_what_changed( $visitor_id = false ) {
+
+	if ( ! $visitor_id ) {
+		$visitor_id = wpsc_get_current_customer_id();
+	}
+
+	$what_about_the_visitor_location_changed = wpsc_get_visitor_meta( $visitor_id, 'location_attributes_changed', true );
+	if ( ! $what_about_the_visitor_location_changed ) {
+		$what_about_the_visitor_location_changed = array();
+	}
+
+	return $what_about_the_visitor_location_changed;
+}
 
 /*
- * It might seem a tad veerbose to attach a seperate hook to each meta item but doing it this
+ * clear any tracked changes in shipping location, presumable when shipping quotes are recalculated
+*
+* @since 3.8.14
+* @access private
+*
+* @param int   $visitor_id the visitor/customer unique id
+*
+* @return array          key value pairs, the key is the unique name of the location element
+*                        that changed, the value is the new value assigned to the location attribute
+*
+*/
+function _wpsc_visitor_location_clear_tracked_changes( $visitor_id = false ) {
+
+	if ( ! $visitor_id ) {
+		$visitor_id = wpsc_get_current_customer_id();
+	}
+
+	wpsc_delete_visitor_meta( $visitor_id, 'location_attributes_changed' );
+
+	return true;
+}
+
+add_action( 'wpsc_before_get_shipping_method', '_wpsc_visitor_location_clear_tracked_changes', 10, 0 );
+add_action( 'wpsc_before_shopping_cart_page', '_wpsc_visitor_location_clear_tracked_changes', 10, 0 );
+
+/*
+ * It might seem a tad verbose to attach a seperate hook to each meta item but doing it this
  * way as several advantages.
  *
  * 	1) If a developer wants to change the fact that changing the shipping city changes the users location
@@ -634,12 +666,13 @@ function _wpsc_visitor_location_is_changing( $meta_value, $meta_key, $visitor_id
  *  of for them.
  *
  */
-add_action( 'wpsc_updated_visitor_meta_shippingregion', '_wpsc_visitor_location_is_changing', 10 , 3 );
-add_action( 'wpsc_updated_visitor_meta_shippingaddress', '_wpsc_visitor_location_is_changing', 10 , 3 );
-add_action( 'wpsc_updated_visitor_meta_shippingcity', '_wpsc_visitor_location_is_changing', 10 , 3 );
-add_action( 'wpsc_updated_visitor_meta_shippingstate', '_wpsc_visitor_location_is_changing', 10 , 3 );
-add_action( 'wpsc_updated_visitor_meta_shippingcountry', '_wpsc_visitor_location_is_changing', 10 , 3 );
-add_action( 'wpsc_updated_visitor_meta_shippingpostcode', '_wpsc_visitor_location_is_changing', 10 , 3 );
+add_action( 'wpsc_updated_visitor_meta_shippingregion', '_wpsc_visitor_location_is_changing', _WPSC_USER_META_HOOK_PRIORITY , 3 );
+add_action( 'wpsc_updated_visitor_meta_shippingaddress', '_wpsc_visitor_location_is_changing', _WPSC_USER_META_HOOK_PRIORITY , 3 );
+add_action( 'wpsc_updated_visitor_meta_shippingcity', '_wpsc_visitor_location_is_changing', _WPSC_USER_META_HOOK_PRIORITY , 3 );
+add_action( 'wpsc_updated_visitor_meta_shippingstate', '_wpsc_visitor_location_is_changing', _WPSC_USER_META_HOOK_PRIORITY , 3 );
+add_action( 'wpsc_updated_visitor_meta_shippingcountry', '_wpsc_visitor_location_is_changing', _WPSC_USER_META_HOOK_PRIORITY , 3 );
+add_action( 'wpsc_updated_visitor_meta_shippingpostcode', '_wpsc_visitor_location_is_changing', _WPSC_USER_META_HOOK_PRIORITY , 3 );
+add_action( 'wpsc_updated_visitor_meta', '_wpsc_vistor_shipping_same_as_billing_meta_update', _WPSC_USER_META_HOOK_PRIORITY, 3 );
 
 
 /*
@@ -687,3 +720,103 @@ function _wpsc_has_visitor_location_changed( $visitor_id = false ) {
 		do_action( 'wpsc_visitor_location_changed', $what_about_the_visitor_location_changed, $visitor_id );
 	}
 }
+
+/**
+ * Tries to turn an arbitrary value into a valid bool looking at the contents, including for strings like false and no, ...
+ *
+ * @param varies $value      value to boolify
+ *
+ * @return boolean true or false
+ */
+function _wpsc_make_value_into_bool( $value ) {
+	if ( ! is_bool( $value ) ) {
+		if ( empty( $value ) ) {
+			$value = false;
+		} elseif ( is_numeric( $value ) ) {
+			$value = (bool) $value;
+		} elseif ( is_string( $value ) ) {
+			$value = strtolower( $value );
+			if ( $value == 'no' || $value == 'false' ) {
+				$value = false;
+			} else {
+				$value = true;
+			}
+		} elseif ( is_array( $value ) ) {
+			$value = ! empty( $value );
+		} else {
+			$value = (bool) $value;
+		}
+	}
+
+	return $value;
+}
+
+/**
+ * when visitor meta is updated we need to check if the shipping same as billing
+ * option is selected.  If so we need to update the corresponding meta value.
+ *
+ * @since 3.8.14
+ * @access private
+ * @param $meta_value any value being stored
+ * @param $meta_key string name of the attribute being stored
+ * @param $visitor_id int id of the visitor to which the attribute applies
+ * @return n/a
+ */
+function _wpsc_vistor_shipping_same_as_billing_meta_update( $meta_value, $meta_key, $visitor_id ) {
+
+	// remove the action so we don't cause an infinite loop
+	remove_action( 'wpsc_updated_visitor_meta', '_wpsc_vistor_shipping_same_as_billing_meta_update', _WPSC_USER_META_HOOK_PRIORITY );
+
+	// if the shipping same as billing option is being checked then copy meta from billing to shipping
+	if ( $meta_key == 'shippingSameBilling' ) {
+		$meta_value = _wpsc_make_value_into_bool( $meta_value );
+
+		if ( $meta_value ) {
+
+			$checkout_names = wpsc_checkout_unique_names();
+
+			foreach ( $checkout_names as $meta_key ) {
+				$meta_key_starts_with_billing = strpos( $meta_key, 'billing', 0 ) === 0;
+
+				if ( $meta_key_starts_with_billing ) {
+					$other_meta_key_name = 'shipping' . substr( $meta_key, strlen( 'billing' ) );
+					if ( in_array( $other_meta_key_name, $checkout_names ) ) {
+						$billing_meta_value = wpsc_get_customer_meta( $meta_key );
+						wpsc_update_customer_meta( $other_meta_key_name, $billing_meta_value );
+					}
+				}
+			}
+		}
+	} else {
+		$shipping_same_as_billing = wpsc_get_customer_meta( 'shippingSameBilling' );
+
+		if ( $shipping_same_as_billing ) {
+
+			$meta_key_starts_with_billing  = strpos( $meta_key, 'billing', 0 ) === 0;
+			$meta_key_starts_with_shipping = strpos( $meta_key, 'shipping', 0 ) === 0;
+
+			if ( $meta_key_starts_with_billing ) {
+				$checkout_names = wpsc_checkout_unique_names();
+
+				$other_meta_key_name = 'shipping' . substr( $meta_key, strlen( 'billing' ) );
+
+				if ( in_array( $other_meta_key_name, $checkout_names ) ) {
+					wpsc_update_customer_meta( $other_meta_key_name, $meta_value );
+				}
+			} elseif ( $meta_key_starts_with_shipping ) {
+				$checkout_names = wpsc_checkout_unique_names();
+
+				$other_meta_key_name = 'billing' . substr( $meta_key, strlen( 'shipping' ) );
+
+				if ( in_array( $other_meta_key_name, $checkout_names ) ) {
+					wpsc_update_customer_meta( $other_meta_key_name, $meta_value );
+				}
+			}
+		}
+	}
+
+	// restore the action we removed at the start
+	add_action( 'wpsc_updated_visitor_meta', '_wpsc_vistor_shipping_same_as_billing_meta_update', _WPSC_USER_META_HOOK_PRIORITY, 3 );
+}
+
+

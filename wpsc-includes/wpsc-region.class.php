@@ -10,10 +10,12 @@
  *
  * @since 3.8.14
  *
- * @param int|string 	required	the country identifier, can be the string ISO code, or the numeric WPeC country id
+ * @param int|string            required    the country identifier, can be the string ISO code, or the
+ *                                          numeric WPeC country id.
  *
- * @param int|string|null|array	required 	the region identifier, can be the text region code, or the numeric region id,
- * 											if an array is passed a new region will be created and saved in the permanent data store
+ * @param int|string|null|array required    the region identifier, can be the text region code, or the
+ *                                          numeric region id, if an array is passed a new region will
+ *                                          be created and saved in the permanent data store
  *
  * @return object WPSC_Region
  */
@@ -28,25 +30,23 @@ class WPSC_Region {
 	 *
 	 * @since 3.8.14
 	 *
-	 * @param int|string|null		required 	$country 	The country identifier, can be the string ISO code,
-	 * 																	or the numeric wpec country id
+	 * @param int|string|null       required    $country    The country identifier, can be the string ISO code,
+	 *                                                      or the numeric wpec country id
 	 *
-	 * @param int|string|null|array	required 	$region		The region identifier, can be the text region code,
-	 *																	or the numeric region id, if an array is passed a
-	 *																	new region will be created and saved in the permanent
-	 *																	data store
+	 * @param int|string|null|array required    $region     The region identifier, can be the text region code,
+	 *                                                      or the numeric region id, if an array is passed a
+	 *                                                      new region will be created and saved in the permanent
+	 *                                                      data store
 	 */
 	public function __construct( $country, $region ) {
 
-		// if a country id or code is passed make sure we have a valid coutnry_id
-		if ( $country ) {
-			$country_id = WPSC_Countries::get_country_id( $country );
-		}
+		// if a country id or code is passed make sure we have a valid country_id
+		$country_id = $country ? WPSC_Countries::get_country_id( $country ) : 0;
 
 		// if we are creating a region use the country_id we just validated and get the region code
 		if ( is_array( $region ) ) {
 			$region['country_id'] = $country_id;
-			$region_id_or_code = $this->_save_region_data( $region );
+			$region_id_or_code    = $this->_save_region_data( $region );
 		} else {
 			$region_id_or_code = $region;
 		}
@@ -57,7 +57,7 @@ class WPSC_Region {
 
 			if ( $country_id && $region_id ) {
 				$wpsc_country = new WPSC_Country( $country_id );
-				$wpsc_region  = WPSC_Countries::get_region( $country_id, $region_id );
+				$wpsc_region  = $wpsc_country->get_region( $region_id );
 
 				if ( $wpsc_region ) {
 					$this->_code       = $wpsc_region->_code;
@@ -168,8 +168,72 @@ class WPSC_Region {
 		$this->_tax			= $region->tax;
 	}
 
+
 	/**
-	 * saves country data to the database
+	 * returns a property matching the key, either a well know property or a property defined elsewhere
+	 *
+	 * @access public
+	 *
+	 * @since 3.8.14
+	 *
+	 * @return varies 	value of the property
+	 */
+	public function get( $key ) {
+
+		$property_name = '_' . $key;
+
+		if ( property_exists( $this, $property_name ) ) {
+			$value = $this->$property_name;
+		} else {
+			$value = wpsc_get_meta( $this->_id, $key, __CLASS__ );
+		}
+
+		return apply_filters( 'wpsc_region_get_property', $value, $key, $this );
+	}
+
+
+	/**
+	 * sets a property for a region, well-known properties are not allowed to be set using this function,
+	 * but arbitrary properties can be set (and accessed later with get)
+	 *
+	 *
+	 * @access public
+	 *
+	 * @since 3.8.14
+	 *
+	 * @return self, to support method chaining
+	 */
+	public function set( $property, $value = '' ) {
+
+		if ( is_array( $property ) ) {
+			foreach ( $property as $key => $value ) {
+				$this->set( $key, $value );
+			}
+		} else {
+
+			$key = $property;
+
+			$property_name = '_' . $key;
+
+			if ( property_exists( $this, $property_name ) ) {
+				$value = $this->$property_name;
+				_wpsc_doing_it_wrong( __FUNCTION__, __( 'Using set to change a well-known WPSC_Region property is deprecated as of version 3.8.14.  Use the class constructor and specify all properties together to perform and insert or an update.', 'wpsc' ), '3.8.14' );
+				if ( defined( 'WPSC_LOAD_DEPRECATED' ) && WPSC_LOAD_DEPRECATED ) {
+					$country_array         = $this->as_array();
+					$country_array[ $key ] = $value;
+					$this->_save_region_data( $country_array );
+				}
+			} else {
+				wpsc_update_meta( $this->_id, $key, $value, __CLASS__  );
+			}
+		}
+
+		return $this;
+	}
+
+
+	/**
+	 * saves region data to the database
 	 *
 	 * @access private
 	 *
@@ -187,11 +251,12 @@ class WPSC_Region {
 		* possible unique identifiers for a country.  Look for a row that has any of the
 		* identifiers.
 		*/
-		$region_id      = isset( $region_data['id'] ) ? intval( $region_data['id'] ) : 0;
-		$country_id     = isset( $region_data['country_id'] ) ? intval( $region_data['country_id'] ) : 0;
-		$region_code    = isset( $region_data['code'] ) ? $region_data['code'] : '';
-		$region_name    = isset( $region_data['code'] ) ? $region_data['code'] : '';
-		$tax			= isset( $region_data['tax'] ) ? $region_data['tax'] : 0;
+		$region_id   = isset( $region_data['id'] ) ? intval( $region_data['id'] ) : 0;
+		$country_id  = isset( $region_data['country_id'] ) ? intval( $region_data['country_id'] ) : 0;
+		$region_code = isset( $region_data['code'] ) ? $region_data['code'] : '';
+		$region_name = isset( $region_data['code'] ) ? $region_data['code'] : '';
+
+		$region_id_from_db = false;
 
 		/*
 		 *  If at least one of the key feilds ins't present we aren'y going to continue, we can't reliably update
@@ -199,7 +264,7 @@ class WPSC_Region {
 		 */
 		if ( empty( $country_id ) || empty( $region_code ) || empty( $region_name ) ) {
 			_wpsc_doing_it_wrong( __FUNCTION__, __( 'Creating a new region requires country id, region code and region name.', 'wpsc' ), '3.8.11' );
-			return false;
+			return $region_id_from_db;
 		}
 
 		if ( $region_id ) {
@@ -238,10 +303,10 @@ class WPSC_Region {
 	 * @since 3.8.14
 	 *
 	 */
-	public $_id 			= false;
-	public $_country_id 	= '';
-	public $_name 			= '';
-	public $_code 			= '';
-	public $_tax 			= 0;
+	public $_id         = false;
+	public $_country_id = '';
+	public $_name       = '';
+	public $_code       = '';
+	public $_tax        = 0;
 }
 

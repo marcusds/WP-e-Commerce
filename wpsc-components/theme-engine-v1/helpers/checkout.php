@@ -93,14 +93,29 @@ function wpsc_has_category_and_country_conflict(){
  * @since 3.8
  * @return (boolean) true or false
  */
-function wpsc_have_valid_shipping_zipcode(){
-	$zip = wpsc_get_customer_meta( 'shippingpostcode' );
+function wpsc_have_valid_shipping_zipcode() {
+	global $wpsc_shipping_modules;
 
-	if( ! $zip || ( __( 'Your Zipcode', 'wpsc' ) == $zip ) && ( wpsc_get_customer_meta( 'update_location' ) ) )
-		return false;
-	else
-		return true;
+	$has_valid_zip_code = true;
 
+	$custom_shipping = get_option( 'custom_shipping_options' );
+
+	$uses_zipcode = false;
+
+	foreach ( (array) $custom_shipping as $shipping ) {
+		if ( isset( $wpsc_shipping_modules[$shipping]->needs_zipcode ) && $wpsc_shipping_modules[$shipping]->needs_zipcode ) {
+			$uses_zipcode = true;
+		}
+	}
+
+	if ( $uses_zipcode ) {
+		$postalcode = wpsc_get_customer_meta( 'shippingpostcode' );
+		if ( empty( $postalcode ) ) {
+			$has_valid_zip_code = false;
+		}
+	}
+
+	return $has_valid_zip_code;
 }
 
 /**
@@ -286,14 +301,20 @@ function wpsc_checkout_form_field() {
 	return $wpsc_checkout->form_field();
 }
 
-function wpsc_shipping_region_list( $selected_country, $selected_region, $shippingdetails = false ) {
+
+function wpsc_shipping_region_list( $selected_country, $selected_region, $deprecated = false, $id = 'region' ) {
 	$output = '';
+
+	if ( false !== $deprecated ) {
+		_wpsc_deprecated_argument( __FUNCTION, '3.8.14' );
+	}
 
 	$country = new WPSC_Country( $selected_country );
 	$regions = $country->get_regions();
 
+	$output .= "<select class=\"wpsc-visitor-meta\" data-wpsc-meta-key=\"shippingregion\" name=\"region\"  id=\"{$id}\" >\n\r";
+
 	if ( count( $regions ) > 0 ) {
-		$output .= "<select class=\"wpsc-visitor-meta\" data-wpsc-meta-key=\"shippingregion\" name=\"region\"  id=\"region\" >\n\r";
 		foreach ( $regions as $region_id => $region ) {
 			$selected = '';
 			if ( $selected_region == $region_id ) {
@@ -303,63 +324,62 @@ function wpsc_shipping_region_list( $selected_country, $selected_region, $shippi
 		}
 		$output .= '';
 
-		$output .= '</select>';
-	} else {
-		$output .= ' ';
 	}
+
+	$output .= '</select>';
+
 	return $output;
 }
 
 function wpsc_shipping_country_list( $shippingdetails = false ) {
 	global $wpsc_shipping_modules;
 
-	$js = '';
+	$wpsc_checkout = new wpsc_checkout();
+	$wpsc_checkout->checkout_item = $shipping_country_checkout_item = $wpsc_checkout->get_checkout_item( 'shippingcountry' );
+
 	$output = '';
 
-	if ( ! $shippingdetails ) {
-		$output = "<input type='hidden' name='wpsc_ajax_action' value='update_location' />";
-		$js = '';
+
+	if ( $shipping_country_checkout_item && $shipping_country_checkout_item->active ) {
+
+		if ( ! $shippingdetails ) {
+			$output = "<input type='hidden' name='wpsc_ajax_action' value='update_location' />";
+		}
+
+		$acceptable_countries = wpsc_get_acceptable_countries();
+
+		// if there is only one country to choose from we are going to set that as the shipping country,
+		// later in the UI generation the same thing will happen to make the single country the current
+		// selection
+		$countries = WPSC_Countries::get_countries( false );
+		if ( count( $countries ) == 1 ) {
+			reset( $countries );
+			$id_of_only_country_available = key( $countries );
+			$wpsc_country = new WPSC_Country( $id_of_only_country_available );
+			wpsc_update_customer_meta( 'shippingcountry', $wpsc_country->get_isocode() );
+		}
+
+		$selected_country = wpsc_get_customer_meta( 'shippingcountry' );
+
+
+		$additional_attributes = 'data-wpsc-meta-key="shippingcountry" ';
+		$output .= wpsc_get_country_dropdown(
+												array(
+														'id'                    => 'current_country',
+														'name'                  => 'country',
+														'class'                 => 'current_country wpsc-visitor-meta',
+														'acceptable_ids'        => $acceptable_countries,
+														'selected'              => $selected_country,
+														'additional_attributes' => $additional_attributes,
+														'placeholder'           => __( 'Please select a country', 'wpsc' ),
+													)
+											);
+
 	}
 
-	$selected_country = wpsc_get_customer_meta( 'shippingcountry' );
-	$selected_region  = wpsc_get_customer_meta( 'shippingregion'  );
+	$output .= wpsc_checkout_shipping_state_and_region();
 
-	if ( empty( $selected_country ) )
-		$selected_country = esc_attr( get_option( 'base_country' ) );
-
-	if ( empty( $selected_region ) )
-		$selected_region = esc_attr( get_option( 'base_region' ) );
-
-	$country_data = WPSC_Countries::get_countries_array();
-
-	$acceptable_countries = wpsc_get_acceptable_countries();
-
-	$additional_attributes = 'data-wpsc-meta-key="shippingcountry" ' . $js;
-
-	$output .= wpsc_get_country_dropdown(
-											array(
-												'name'                  => 'country',
-												'id'                    => 'current_country',
-												'additional_attributes' => $additional_attributes,
-												'acceptable_ids'        => $acceptable_countries,
-												'selected'              => $selected_country,
-												'class'                 => 'wpsc-visitor-meta',
-												'placeholder'           => '',
-											)
-									);
-
-	$output .= wpsc_shipping_region_list( $selected_country, $selected_region, $shippingdetails );
-
-	if ( isset( $_POST['wpsc_update_location'] ) && $_POST['wpsc_update_location'] == 'true' ) {
-		wpsc_update_customer_meta( 'update_location', true );
-	} else {
-		wpsc_delete_customer_meta( 'update_location' );
-	}
-
-	$zipvalue = (string) wpsc_get_customer_meta( 'shipping_zip' );
-	if ( ! empty( $_POST['zipcode'] ) )
-		$zipvalue = $_POST['zipcode'];
-
+	$zipvalue = (string) wpsc_get_customer_meta( 'shippingpostcode' );
 	$zip_code_text = __( 'Your Zipcode', 'wpsc' );
 
 	if ( ( $zipvalue != '' ) && ( $zipvalue != $zip_code_text ) ) {
@@ -367,19 +387,20 @@ function wpsc_shipping_country_list( $shippingdetails = false ) {
 		wpsc_update_customer_meta( 'shipping_zip', $zipvalue );
 	} else {
 		$zipvalue = $zip_code_text;
-		$color = '#999';
+		$color    = '#999';
 	}
 
-	$uses_zipcode = false;
+	$uses_zipcode    = false;
 	$custom_shipping = get_option( 'custom_shipping_options' );
-	foreach ( (array)$custom_shipping as $shipping ) {
+
+	foreach ( (array) $custom_shipping as $shipping ) {
 		if ( isset( $wpsc_shipping_modules[$shipping]->needs_zipcode ) && $wpsc_shipping_modules[$shipping]->needs_zipcode == true ) {
 			$uses_zipcode = true;
 		}
 	}
 
 	if ( $uses_zipcode ) {
-		$output .= " <input type='text' style='color:" . $color . ";' onclick='if (this.value==\"" . esc_js( $zip_code_text ) . "\") {this.value=\"\";this.style.color=\"#000\";}' onblur='if (this.value==\"\") {this.style.color=\"#999\"; this.value=\"" . esc_js( $zip_code_text ) . "\"; }' value='" . esc_attr( $zipvalue ) . "' size='10' name='zipcode' id='zipcode'>";
+		$output .= " <input data-wpsc-meta-key='shippingpostcode' class='wpsc-visitor-meta' type='text' style='color:" . $color . ";' onclick='if (this.value==\"" . esc_js( $zip_code_text ) . "\") {this.value=\"\";this.style.color=\"#000\";}' onblur='if (this.value==\"\") {this.style.color=\"#999\"; this.value=\"" . esc_js( $zip_code_text ) . "\"; }' value='" . esc_attr( $zipvalue ) . "' size='10' name='zipcode' id='zipcode'>";
 	}
 	return $output;
 }

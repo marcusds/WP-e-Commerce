@@ -7,14 +7,16 @@
  * clear method.
  *
  * This class has these advantages over using an array in the implementation of business logic:
- *  - caching is completely transparent you don't need to
+ *  - caching is completely transparent
  *
- * @access public
+ * Note: This class should be considered experimental and subject to change.
+ *
+ * @access private
  *
  * @since 3.8.14
  *
  */
-class WPSC_Data_Map {
+final class WPSC_Data_Map {
 
 	/**
 	 * Create the map
@@ -23,22 +25,24 @@ class WPSC_Data_Map {
 	 *
 	 * @since 3.8.14
 	 *
-	 * @param string  		a map name to uniquely identify this map so it can be saved and restored
-	 * @param string|array  a callback function to re-generate the map if it can't be reloaded when it is neaded
+	 * @param string         $map_name       a map name to uniquely identify this map so it can be
+	 *                                       saved and restored
+	 *
+	 * @param string|array   $map_callback   a callback function to re-generate the map if it can't be
+	 *                                       reloaded when it is needed. The data map callback function will
+	 *                                       be called with a single parameter, the data map
 	 *
 	 */
 	public function __construct( $map_name = '', $map_callback = null ) {
 
-		$this->_map_name 		= $map_name;
-		$this->_map_callback 	= $map_callback;
+		$this->_map_name     = $map_name;
+		$this->_map_callback = $map_callback;
 
 		// if our map is names it means we want to save the map for use some time in the future
 		if ( ! empty( $this->_map_name ) ) {
 			add_action( 'shutdown', array( &$this, '_save_map' ) );
 		}
 	}
-
-
 
 	/**
 	 * Count of items in the map
@@ -95,10 +99,11 @@ class WPSC_Data_Map {
 		}
 
 		$this->_map_data = null;
+		$this->_dirty    = false;
 	}
 
 	/**
-	 * Get the value associated wit ha key from the map, or null on failure
+	 * Get the value associated with a key from the map, or null on failure
 	 *
 	 * @access public
 	 *
@@ -202,6 +207,7 @@ class WPSC_Data_Map {
 	 * @return string  a map name to uniquely identify this map so it can be saved and restored
 	 */
 	private function _confirm_data_ready() {
+
 		if ( ! is_array( $this->_map_data ) ) {
 
 			// if this is a named map we can try to restore it from the transient store
@@ -211,26 +217,64 @@ class WPSC_Data_Map {
 
 			// if we still don't have a valid map and there is a constructor callback use it
 			if ( ! is_array( $this->_map_data ) && ! empty( $this->_map_callback ) && is_callable( $this->_map_callback ) ) {
+				static $already_invoking_callback = array();
 
-				$this->_map_data = array();
-				call_user_func( $this->_map_callback , $this );
-				if ( ! is_array( $this->_map_data ) ) {
+				// the callback could be a string or an array, we can keep track of
+				// who's call we are processing tp avoid a recursion problem, just in case!
+				$callback_unique_key = md5( json_encode( $this->_map_callback ) );
+
+				if ( ! array_key_exists( $callback_unique_key, $already_invoking_callback ) ) {
+					$already_invoking_callback[$callback_unique_key] = true;
+
 					$this->_map_data = array();
-					$this->_dirty = true;
+
+					// callback has a single parameter, the data map
+					call_user_func( $this->_map_callback, $this );
+
+					if ( ! is_array( $this->_map_data ) ) {
+						$this->_map_data = array();
+					}
+
+					if ( ! empty ( $this->_map_name ) ) {
+						set_transient( $this->_map_name, $this->_map_data );
+					}
+
+					// we just loaded and saved the data, that makes it not dirty
+					$this->_dirty = false;
+
+				} else {
+					if ( is_array( $this->_map_callback ) )  {
+						$function = $this->_map_callback[0] . '::'. $this->_map_callback[1];
+					} else {
+						$function = $this->_map_callback;
+					}
+					_wpsc_doing_it_wrong( $function , __( 'WPSC_Data_Map map creation callback is recursively calling itself.', 'wpsc' ), '3.8.14' );
 				}
+
+				unset( $already_invoking_callback[$callback_unique_key] );
+
 			}
 
 			// if we still don't have valid map data create an empty array
 			if ( ! is_array( $this->_map_data ) ) {
 				$this->_map_data = array();
 			}
-
-			// we have not soiled our data, note that
-			$this->_dirty = false;
 		}
 
-		return (  is_array( $this->_map_data ) );
+		return is_array( $this->_map_data );
+	}
 
+	/**
+	 * is the data map initialized
+	 *
+	 * @access public
+	 *
+	 * @since 3.8.14
+	 *
+	 * @return boolean 	true if the data in the map has been initialized and the map is ready to use, false otherwise
+	 */
+	public function initialized() {
+		return is_array( $this->_map_data );
 	}
 
 	/**
@@ -268,8 +312,8 @@ class WPSC_Data_Map {
 	 * @since 3.8.14
 	 *
 	 */
-	public $_map_name 		= null;
-	public $_map_callback 	= null;
-	public $_map_data 		= null;
-	private $_dirty    		= false;
+	public  $_map_name     = null;
+	public  $_map_callback = null;
+	public  $_map_data     = null;
+	private $_dirty       = false;
 }

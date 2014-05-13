@@ -4,7 +4,6 @@ if ( ! defined( 'WPSC_BOT_VISITOR_ID' ) ) {
 	define( 'WPSC_BOT_VISITOR_ID', 1 );
 }
 
-
 /**
  * Get current customer ID.
  *
@@ -18,6 +17,12 @@ if ( ! defined( 'WPSC_BOT_VISITOR_ID' ) ) {
  * @return mixed        User ID (if logged in) or customer cookie ID
  */
 function wpsc_get_current_customer_id( $visitor_id_to_set = false ) {
+	$id = apply_filters( 'wpsc_get_current_customer_id', null );
+
+	if ( ! empty( $id ) ) {
+		return $id;
+	}
+
 	// once we determine the current customer id it will remain in effect for
 	// the remainder of the current request.  This helps performance, but also
 	// makes it possible to manipulate the visitor database and cookie without
@@ -102,8 +107,6 @@ function wpsc_customer_comment_count( $id = false ) {
  */
 function wpsc_customer_purchase_count( $id = false ) {
 
-	$count = 0;
-
 	if ( ! $id ) {
 		$id = wpsc_get_current_customer_id();
 	}
@@ -119,8 +122,6 @@ function wpsc_customer_purchase_count( $id = false ) {
  * @return int
  */
 function wpsc_customer_has_purchases( $id = false ) {
-
-	$has_purchases = false;
 
 	if ( ! $id ) {
 		$id = wpsc_get_current_customer_id();

@@ -86,14 +86,19 @@ class wpec_taxes_controller {
 				}
 
 				// minus coupon tax if we are using coupons, but make sure the coupon is not a free shipping coupon
-				if ($wpsc_cart->coupons_amount > 0 && ! $free_shipping){
+
+				/* Iterative note: In a future implementation, we'll allow for coupons to either apply to taxes, or not */
+				/* The default logic to date has been that they do, which is generally improper, and there's a logic bug here as well */
+				/* @link: https://github.com/wp-e-commerce/WP-e-Commerce/issues/170 */
+				if ( $wpsc_cart->coupons_amount > 0 && ! $free_shipping ) {
 
 					if ( $this->wpec_taxes_isincluded() )
 						$coupon_tax = $this->wpec_taxes_calculate_tax($wpsc_cart->coupons_amount, $tax_rate['rate'], false);
 					else
 						$coupon_tax = $this->wpec_taxes_calculate_tax($wpsc_cart->coupons_amount, $tax_rate['rate']);
 
-					$total_tax -= $coupon_tax;
+					/* Only subtract if coupons apply to tax.  Likely in 4.0 */
+					/* $total_tax -= $coupon_tax; */
 				}
 
 
@@ -513,7 +518,7 @@ class wpec_taxes_controller {
 				foreach ( $select_settings as $key => $setting ) {
 					if ( $key == 'label' ) {
 						continue;
-					} elseif ( $key == 'value') {
+					} elseif ( $key == 'value' ) {
 						$setting = esc_attr( $setting );
 					}
 					$returnable .= $key."='".$setting."'";

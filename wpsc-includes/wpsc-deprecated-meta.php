@@ -59,7 +59,7 @@ if ( WPSC_DEPRECATE_CUSTOMER_CHECKOUT_DETAILS ) {
 	 * @return array        checkout details array
 	 */
 	function _wpsc_cleanup_visitor_meta_checkout_details() {
-		remove_filter( 'wpsc_got_visitor_meta_checkout_details', '_wpsc_get_deprecated_visitor_meta_checkout_details', 1, 3 );
+		remove_filter( 'wpsc_get_visitor_meta_checkout_details', '_wpsc_get_deprecated_visitor_meta_checkout_details', 1, 3 );
 
 		$meta_item_ids = wpsc_get_meta_ids_by_meta_key( 'visitor', 'checkout_details' );
 
@@ -85,11 +85,11 @@ if ( WPSC_DEPRECATE_CUSTOMER_CHECKOUT_DETAILS ) {
 		}
 
 
-		add_filter( 'wpsc_got_visitor_meta_checkout_details', '_wpsc_get_deprecated_visitor_meta_checkout_details', 1, 3 );
+		add_filter( 'wpsc_get_visitor_meta_checkout_details', '_wpsc_get_deprecated_visitor_meta_checkout_details', 1, 3 );
 	}
 
 	/**
-	 * Update the meta values from the contents of a meta value that mirrors what was once "checkout_details".
+	 * Get the meta values from the contents of a meta value that mirrors what was once "checkout_details".
 	 *
 	 * @since  3.8.14
 	 * @param  string|int $id Customer ID. Optional. Defaults to current customer
@@ -101,7 +101,7 @@ if ( WPSC_DEPRECATE_CUSTOMER_CHECKOUT_DETAILS ) {
 			$id = wpsc_get_current_customer_id();
 		}
 
-		remove_filter( 'wpsc_got_visitor_meta_checkout_details', '_wpsc_get_deprecated_visitor_meta_checkout_details', 1, 3 );
+		remove_filter( 'wpsc_get_visitor_meta_checkout_details', '_wpsc_get_deprecated_visitor_meta_checkout_details', 1, 3 );
 
 		global $wpdb;
 
@@ -117,7 +117,14 @@ if ( WPSC_DEPRECATE_CUSTOMER_CHECKOUT_DETAILS ) {
 
 				switch ( $form_field['type'] ) {
 					case 'delivery_country':
-						if ( wpsc_has_regions( $meta_value ) ) {
+						// if the meta value is an array, the country is the first element, region is the second
+						if ( is_array( $meta_value ) ) {
+							$country = $meta_value[0];
+						} else {
+							$country = $meta_value;
+						}
+
+						if ( wpsc_has_regions( $country ) ) {
 							$meta_value = array( $meta_value, wpsc_get_customer_meta( 'shippingregion' ) );
 						}
 
@@ -125,7 +132,14 @@ if ( WPSC_DEPRECATE_CUSTOMER_CHECKOUT_DETAILS ) {
 						break;
 
 					case 'country':
-						if ( wpsc_has_regions( $meta_value ) ) {
+						// if the meta value is an array, the country is the first element, region is the second
+						if ( is_array( $meta_value ) ) {
+							$country = $meta_value[0];
+						} else {
+							$country = $meta_value;
+						}
+
+						if ( wpsc_has_regions( $country ) ) {
 							$meta_value = array( 0 => $meta_value, wpsc_get_customer_meta( 'billingregion' )  );
 						}
 
@@ -144,12 +158,12 @@ if ( WPSC_DEPRECATE_CUSTOMER_CHECKOUT_DETAILS ) {
 			wpsc_delete_visitor_meta( $id, $key );
 		}
 
-		add_filter( 'wpsc_got_visitor_meta_checkout_details', '_wpsc_get_deprecated_visitor_meta_checkout_details', 1, 3 );
+		add_filter( 'wpsc_get_visitor_meta_checkout_details', '_wpsc_get_deprecated_visitor_meta_checkout_details', 1, 3 );
 
 		return $meta_data_in_old_format;
 	}
 
-	add_filter( 'wpsc_got_visitor_meta_checkout_details', '_wpsc_get_deprecated_visitor_meta_checkout_details', 1, 3 );
+	add_filter( 'wpsc_get_visitor_meta_checkout_details', '_wpsc_get_deprecated_visitor_meta_checkout_details', 1, 3 );
 
 	/**
 	 * Get a deprecated customer meta value that mirrors what was once "checkout_details".
@@ -158,7 +172,7 @@ if ( WPSC_DEPRECATE_CUSTOMER_CHECKOUT_DETAILS ) {
 	 * @param  string|int $id Customer ID. Optional. Defaults to current customer
 	 * @return array        checkout details array
 	 */
-	function _wpsc_update_deprecated_visitor_meta_checkout_details(  $meta_data_in_old_format, $key = 'checkout_details', $id = null ) {
+	function _wpsc_update_deprecated_visitor_meta_checkout_details( $meta_data_in_old_format, $key = 'checkout_details', $id = null ) {
 		global $wpdb;
 
 		if ( ! $id ) {
@@ -184,7 +198,7 @@ if ( WPSC_DEPRECATE_CUSTOMER_CHECKOUT_DETAILS ) {
 								$meta_value = $meta_value[0];
 							}
 							wpsc_update_visitor_meta( $id, 'shippingcountry', $meta_value );
-							wpsc_update_visitor_meta( $id , 'shippingregion' );
+							wpsc_update_visitor_meta( $id, 'shippingregion', '' );
 						}
 
 						break;
@@ -199,7 +213,7 @@ if ( WPSC_DEPRECATE_CUSTOMER_CHECKOUT_DETAILS ) {
 							}
 
 							wpsc_update_visitor_meta( $id, 'billingcountry', $meta_value );
-							wpsc_update_visitor_meta( $id, 'billingregion' );
+							wpsc_update_visitor_meta( $id, 'billingregion', '' );
 						}
 
 						break;

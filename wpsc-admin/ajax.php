@@ -15,7 +15,7 @@
 function _wpsc_ajax_verify_nonce( $ajax_action ) {
 	// nonce can be passed with name wpsc_nonce or _wpnonce
 	$nonce = '';
-	
+
 	if ( isset( $_REQUEST['nonce'] ) )
 		$nonce = $_REQUEST['nonce'];
 	elseif ( isset( $_REQUEST['_wpnonce'] ) )
@@ -210,7 +210,7 @@ function _wpsc_ajax_add_variation_set() {
 	}
 
 	ob_start();
-	
+
 	wp_terms_checklist( (int) $_POST['post_id'], array(
 		'taxonomy'      => 'wpsc-variation',
 		'descendants_and_self' => $variation_set_id,
@@ -466,8 +466,6 @@ function _wpsc_ajax_remove_product_meta() {
  *
  * @uses wpsc_purchlog_edit_status()                    Edits purchase log status
  * @uses WP_Error                                       WordPress Error class
- * @uses get_bloginfo()                                 Gets information about your WordPress site
- * @uses set_current_screen()                           Sets current screen object
  * @uses WPSC_Purchase_Log_List_Table
  * @uses WPSC_Purchase_Log_List_Table::prepare_items()
  * @uses WPSC_Purchase_Log_List_Table::views()
@@ -482,10 +480,7 @@ function _wpsc_ajax_change_purchase_log_status() {
 
 	$args = array();
 
-	if ( version_compare( get_bloginfo( 'version' ), '3.5', '<' ) )
-		set_current_screen( 'dashboard_page_wpsc-sales-logs' );
-	else
-		$args['screen'] = 'dashboard_page_wpsc-sales-logs';
+	$args['screen'] = 'dashboard_page_wpsc-sales-logs';
 
 	require_once( WPSC_FILE_PATH . '/wpsc-admin/includes/purchase-log-list-table-class.php' );
 	$purchaselog_table = new WPSC_Purchase_Log_List_Table( $args );
